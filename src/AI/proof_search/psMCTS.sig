@@ -5,6 +5,10 @@ sig
 
   (* outcome *)
   datatype status = Undecided | Win | Lose
+  val is_undecided : status -> bool
+  val is_win : status -> bool
+  val is_lose : status -> bool
+  val string_of_status : status -> string
 
   (* search tree: 'a is a board position, 'b is a move *)
   type id = int list
@@ -50,18 +54,14 @@ sig
     noise_coeff : real,
     noise_gen : unit -> real,
     noconfl : bool,
-    avoidlose : bool
+    avoidlose : bool,
+    evalwin : bool
     }
 
   type ('a,'b) mctsobj =
-    {
-    mctsparam : mctsparam,
-    game : ('a,'b) game,
-    player : ('a,'b) player
-    }
+    {mctsparam : mctsparam, game : ('a,'b) game, player : ('a,'b) player}
 
   val add_rootnoise : mctsparam -> ('a,'b) tree -> ('a,'b) tree
-
   val starttree_of : ('a,'b) mctsobj -> 'a ->
     (('a,'b) tree * ('a,id) Redblackmap.dict)
   val mcts : ('a,'b) mctsobj -> (('a,'b) tree * ('a,id) Redblackmap.dict) ->
