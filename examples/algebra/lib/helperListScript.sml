@@ -13,8 +13,6 @@ val _ = new_theory "helperList";
 (* ------------------------------------------------------------------------- *)
 
 
-(* val _ = load "lcsymtacs"; *)
-open lcsymtacs;
 
 (* val _ = load "jcLib"; *)
 open jcLib;
@@ -111,7 +109,6 @@ open rich_listTheory; (* for EVERY_REVERSE *)
 
    DROP and TAKE:
    DROP_LENGTH_NIL       |- !l. DROP (LENGTH l) l = []
-   DROP_NON_NIL          |- !n l. n < LENGTH l ==> DROP n l <> []
    HD_DROP               |- !ls n. n < LENGTH ls ==> HD (DROP n ls) = EL n ls
    TAKE_1_APPEND         |- !x y. x <> [] ==> (TAKE 1 (x ++ y) = TAKE 1 x)
    DROP_1_APPEND         |- !x y. x <> [] ==> (DROP 1 (x ++ y) = DROP 1 x ++ y)
@@ -1146,15 +1143,6 @@ val DROP_LENGTH_NIL = store_thm(
         DROP n (h::l) = DROP (n-1) l by DROP_def
                       <> []          by induction hypothesis, n-1 < LENGTH l
 *)
-(* Proof:
-   Note !ls n. (DROP n ls = []) <=> n >= LENGTH ls    by DROP_NIL
-     so n < LENGTH ls ==> DROP n ls <> []             by NOT_LESS_EQUAL
-*)
-val DROP_NON_NIL = store_thm(
-  "DROP_NON_NIL",
-  ``!n l. n < LENGTH l ==> DROP n l <> []``,
-  metis_tac[DROP_NIL, DECIDE ``x >= y <=> ~(x < y)``]);
-
 (* Theorem: n < LENGTH ls ==> (HD (DROP n ls) = EL n ls) *)
 (* Proof:
      HD (DROP n ls)
@@ -1556,7 +1544,7 @@ val rotate_full = store_thm(
 (* Theorem: n < LENGTH l ==> rotate (SUC n) l = rotate 1 (rotate n l) *)
 (* Proof:
    Since n < LENGTH l, l <> [] by LENGTH_NIL.
-   Thus  DROP n l <> []  by DROP_NON_NIL  (need n < LENGTH l)
+   Thus  DROP n l <> []  by DROP_EQ_NIL  (need n < LENGTH l)
    Expand by rotate_def, this is to show:
    DROP (SUC n) l ++ TAKE (SUC n) l = DROP 1 (DROP n l ++ TAKE n l) ++ TAKE 1 (DROP n l ++ TAKE n l)
    LHS = DROP (SUC n) l ++ TAKE (SUC n) l
@@ -1572,7 +1560,7 @@ val rotate_suc = store_thm(
   rpt strip_tac >>
   `LENGTH l <> 0` by decide_tac >>
   `l <> []` by metis_tac[LENGTH_NIL] >>
-  `DROP n l <> []` by metis_tac[DROP_NON_NIL] >>
+  `DROP n l <> []` by simp[DROP_EQ_NIL] >>
   rw[rotate_def, DROP_1_APPEND, TAKE_1_APPEND, DROP_SUC, TAKE_SUC]);
 
 (* Theorem: Rotate keeps LENGTH (of necklace): LENGTH (rotate n l) = LENGTH l *)
@@ -6553,15 +6541,16 @@ val DILATE_0_LENGTH_UPPER = store_thm(
            = EL (k - m) (DILATE e 0 n l)             by EL_APPEND, n <= k
            = e                                       by induction hypothesis, (k - m) MOD n <> 0
 *)
-val DILATE_0_EL = store_thm(
-  "DILATE_0_EL",
-  ``!l e n k. k < LENGTH (DILATE e 0 n l) ==>
-     (EL k (DILATE e 0 n l) = if k MOD (SUC n) = 0 then EL (k DIV (SUC n)) l else e)``,
+Theorem DILATE_0_EL:
+  !l e n k.
+     k < LENGTH (DILATE e 0 n l) ==>
+     EL k (DILATE e 0 n l) = if k MOD (SUC n) = 0 then EL (k DIV (SUC n)) l
+                             else e
+Proof
   ntac 3 strip_tac >>
   `0 < SUC n` by decide_tac >>
   qabbrev_tac `m = SUC n` >>
-  Induct_on `l` >-
-  rw[] >>
+  Induct_on `l` >- rw[] >>
   rpt strip_tac >>
   `LENGTH (DILATE e 0 n [h]) = 1` by rw[DILATE_SING] >>
   `LENGTH (DILATE e 0 n (h::l)) = SUC (m * LENGTH l)` by rw[DILATE_0_LENGTH, Abbr`m`] >>
@@ -6586,21 +6575,25 @@ val DILATE_0_EL = store_thm(
         rw[]
       ],
       `m <= k` by decide_tac >>
-      `EL k (t ++ DILATE e 0 n l) = EL (k - m) (DILATE e 0 n l)` by rw[EL_APPEND] >>
-      `k - m < LENGTH (DILATE e 0 n l)` by rw[DILATE_0_LENGTH] >>
-      `(k - m) MOD m = k MOD m` by rw[SUB_MOD] >>
-      `(k - m) DIV m = k DIV m - 1` by rw[SUB_DIV] >>
+      `EL k (t ++ DILATE e 0 n l) = EL (k - m) (DILATE e 0 n l)`
+        by simp[EL_APPEND] >>
+      `k - m < LENGTH (DILATE e 0 n l)`
+        by (trace ("BasicProvers.var_eq_old", 1)(rw[DILATE_0_LENGTH])) >>
+      `(k - m) MOD m = k MOD m` by simp[SUB_MOD] >>
+      `(k - m) DIV m = k DIV m - 1` by simp[SUB_DIV] >>
       Cases_on `k MOD m = 0` >| [
         `0 < k DIV m` by rw[DIVIDES_MOD_0, DIV_POS] >>
         `EL (k - m) (DILATE e 0 n l) = EL (k DIV m - 1) l` by rw[] >>
         `_ = EL (PRE (k DIV m)) l` by rw[PRE_SUB1] >>
         `_ = EL (k DIV m) (h::l)` by rw[EL_CONS] >>
         rw[],
-        `EL (k - m) (DILATE e 0 n l)  = e` by rw[] >>
+        `EL (k - m) (DILATE e 0 n l)  = e`
+          by trace ("BasicProvers.var_eq_old", 1)(rw[]) >>
         rw[]
       ]
     ]
-  ]);
+  ]
+QED
 
 (* This is a milestone theorem. *)
 
@@ -6678,7 +6671,8 @@ val DILATE_0_LAST = store_thm(
   `k = m * PRE (LENGTH l)` by rw[DILATE_0_LENGTH, Abbr`k`, Abbr`m`] >>
   `k MOD m = 0` by metis_tac[MOD_EQ_0, MULT_COMM] >>
   `k DIV m = PRE (LENGTH l)` by metis_tac[MULT_DIV, MULT_COMM] >>
-  `k < LENGTH (DILATE e 0 n l)` by rw[Abbr`k`] >>
+  `k < LENGTH (DILATE e 0 n l)` by simp[Abbr`k`] >>
+  Q.RM_ABBREV_TAC ‘k’ >>
   rw[DILATE_0_EL]);
 
 (* ------------------------------------------------------------------------- *)

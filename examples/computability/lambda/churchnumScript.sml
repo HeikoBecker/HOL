@@ -357,14 +357,15 @@ val FV_ceqnat = Store_thm(
   ``FV ceqnat = {}``,
   SRW_TAC [][ceqnat_def, EXTENSION] THEN METIS_TAC []);
 
-val ceqnat_behaviour = bstore_thm(
-  "ceqnat_behaviour",
-  ``ceqnat @@ church n @@ church m -n->* cB (n = m)``,
+Theorem ceqnat_behaviour[betasimp]:
+  ceqnat @@ church n @@ church m -n->* cB (n = m)
+Proof
   SIMP_TAC (bsrw_ss()) [ceqnat_def] THEN
-  Q.ID_SPEC_TAC `m` THEN Induct_on `n` THEN1
-    SIMP_TAC (bsrw_ss()) [EQ_SYM_EQ] THEN
+  Q.ID_SPEC_TAC ‘m’ THEN Induct_on ‘n’ THEN1
+    SIMP_TAC (bsrw_ss()) [] THEN
   ASM_SIMP_TAC (bsrw_ss()) [] THEN
-  Cases_on `m` THEN SRW_TAC [][])
+  Cases_on ‘m’ THEN SRW_TAC [][]
+QED
 
 (* $< 0 = λn. not (is_zero n)
    $< (SUC m) = λn. not (is_zero n) ∧ $< m (PRE n)
@@ -511,6 +512,35 @@ val cmod_behaviour = bstore_thm(
   ``0 < q ⇒
      cmod @@ church p @@ church q -n->* church (p MOD q)``,
   SIMP_TAC (bsrw_ss()) [cdivmodt_behaviour, cmod_def]);
+
+(* ----------------------------------------------------------------------
+    Exponentiation
+   ---------------------------------------------------------------------- *)
+
+val cexp_def = Define`
+  cexp = LAM "m" (LAM "n" (VAR "n" @@ church 1 @@ (cmult @@ VAR "m")))
+`;
+
+Theorem FV_cexp[simp]:
+  FV cexp = {}
+Proof
+  rw[cexp_def,EXTENSION] >> metis_tac[]
+QED
+
+val cexp_eqn = brackabs.brackabs_equiv [] cexp_def
+
+Theorem cexp_behaviour:
+  cexp @@ m @@ church 0 == church 1 ∧
+  cexp @@ m @@ church (SUC n) == cmult @@ m @@ (cexp @@ m @@ church n)
+Proof
+  asm_simp_tac(bsrw_ss())[cexp_eqn]
+QED
+
+Theorem cexp_corr[betasimp]:
+  cexp @@ church m @@ church n == church (m**n)
+Proof
+  Induct_on`n` >>  asm_simp_tac(bsrw_ss())[cexp_behaviour,arithmeticTheory.EXP]
+QED
 
 (* ----------------------------------------------------------------------
     Pairs of numbers
@@ -908,5 +938,22 @@ val cfindleast_bnfE = store_thm(
     `(c0 = cn) ∨ c0 < cn` by DECIDE_TAC THEN SRW_TAC [][]
   ]);
 
-val _ = export_theory()
+val ceven_def = Define‘
+  ceven = LAM "n" (ceqnat @@ church 0 @@ (cmod @@ VAR "n" @@ church 2))
+’;
 
+Theorem FV_ceven[simp] :
+  FV ceven = ∅
+Proof
+  simp[EXTENSION, ceven_def]
+QED
+
+val ceven_eqn = brackabs.brackabs_equiv [] ceven_def
+
+Theorem ceven_behaviour:
+  ceven @@ church n == cB (EVEN n)
+Proof
+  simp_tac (bsrw_ss()) [ceven_eqn, arithmeticTheory.EVEN_MOD2] >> metis_tac[]
+QED
+
+val _ = export_theory()

@@ -16,10 +16,8 @@ val ERR = mk_HOL_ERR "aiLib"
    Misc
    ------------------------------------------------------------------------ *)
 
-type fea = int list
-type lbl = (string * real * goal * goal list)
-
 fun vector_to_list v = Vector.foldr (op ::) [] v
+fun array_to_list v = Array.foldr (op ::) [] v
 
 fun number_fst start l = case l of
   []      => []
@@ -29,34 +27,36 @@ fun number_snd start l = case l of
   []      => []
 | a :: m  => (a,start) :: number_snd (start + 1) m
 
+fun is_singleton l = case l of [a] => true | _ => false
+
 fun print_endline s = print (s ^ "\n")
+
+fun hash_string_mod modulo s =
+  let
+    fun hsh (i, A) s =
+       hsh (i + 1, (A * 263 + Char.ord (String.sub (s, i))) mod modulo) s
+       handle Subscript => A
+  in
+    hsh (0,0) s
+  end
 
 val hash_modulo =
   if valOf (Int.maxInt) > 2147483647
   then 79260655 * 10000000 + 5396977 (* assumes 64 bit *)
   else 1002487 (* assumes 32 bit *)
 
-local open Char String in
-  fun hash_string s =
-    let
-      fun hsh (i, A) s =
-         hsh (i + 1, (A * 263 + ord (sub (s, i))) mod hash_modulo) s
-         handle Subscript => A
-    in
-      hsh (0,0) s
-    end
-end
+val hash_string = hash_string_mod hash_modulo
 
-local open Char String in
-  fun hash_string_mod modulo s =
-    let
-      fun hsh (i, A) s =
-         hsh (i + 1, (A * 263 + ord (sub (s, i))) mod modulo) s
-         handle Subscript => A
-    in
-      hsh (0,0) s
-    end
-end
+fun inter_increasing l1 l2 = case (l1,l2) of
+    ([],_) => []
+  | (_,[]) => []
+  | (a1 :: m1, a2 :: m2) =>
+    (
+    case Int.compare (a1,a2) of
+      LESS => inter_increasing m1 l2
+    | GREATER => inter_increasing l1 m2
+    | EQUAL => a1 :: inter_increasing m1 m2
+    )
 
 (* ------------------------------------------------------------------------
    Commands
@@ -74,24 +74,26 @@ fun run_cmd cmd = ignore (OS.Process.system cmd)
 
 (* TODO: Use OS to change dir? *)
 fun cmd_in_dir dir cmd = run_cmd ("cd " ^ dir ^ "; " ^ cmd)
+fun clean_dir dir = run_cmd ("rm " ^ dir ^ "/*")
+fun clean_rec_dir dir = run_cmd ("rm -r " ^ dir ^ "/*")
 
-(* -------------------------------------------------------------------------
+(* ------------------------------------------------------------------------
    Comparisons
-   ------------------------------------------------------------------------- *)
-
-fun goal_compare ((asm1,w1), (asm2,w2)) =
-  list_compare Term.compare (w1 :: asm1, w2 :: asm2)
+   ------------------------------------------------------------------------ *)
 
 fun cpl_compare cmp1 cmp2 ((a1,a2),(b1,b2)) =
   let val r = cmp1 (a1,b1) in
     if r = EQUAL then cmp2 (a2,b2) else r
   end
 
+fun goal_compare ((asm1,w1), (asm2,w2)) =
+  list_compare Term.compare (w1 :: asm1, w2 :: asm2)
+
 fun triple_compare cmp1 cmp2 cmp3 ((a1,a2,a3),(b1,b2,b3)) =
   cpl_compare (cpl_compare cmp1 cmp2) cmp3 (((a1,a2),a3),((b1,b2),b3))
 
-fun lbl_compare ((stac1,_,g1,_),(stac2,_,g2,_)) =
-  cpl_compare String.compare goal_compare ((stac1,g1),(stac2,g2))
+fun fst_compare cmp ((a,_),(b,_)) = cmp (a,b)
+fun snd_compare cmp ((_,a),(_,b)) = cmp (a,b)
 
 fun compare_imax ((_,r2),(_,r1)) = Int.compare (r1,r2)
 fun compare_imin ((_,r1),(_,r2)) = Int.compare (r1,r2)
@@ -165,16 +167,16 @@ fun count_dict startdict l =
     foldl f startdict l
   end
 
-(* -------------------------------------------------------------------------
+(* ------------------------------------------------------------------------
    References
-   ------------------------------------------------------------------------- *)
+   ------------------------------------------------------------------------ *)
 
 fun incr x = x := (!x) + 1
 fun decr x = x := (!x) - 1
 
-(* -------------------------------------------------------------------------
+(* ------------------------------------------------------------------------
    List
-   ------------------------------------------------------------------------- *)
+   ------------------------------------------------------------------------ *)
 
 fun one_in_n n start l = case l of
     [] => []
@@ -303,7 +305,6 @@ fun all_subterms tm =
     traverse tm; !r
   end
 
-
 fun fold_left f l orig = case l of
     [] => orig
   | a :: m => let val new_orig = f a orig in fold_left f m new_orig end
@@ -336,6 +337,89 @@ fun topo_sort cmp graph =
 
 fun sort_thyl thyl =
     topo_sort String.compare (map (fn x => (x, ancestry x)) thyl)
+
+fun interleave offset l1 l2 =
+  let
+    val l1' = map_snd (fn x => 2 * x) (number_snd 1 l1)
+    val l2' = map_snd (fn x => offset * 2 * x + 1) (number_snd 1 l2)
+  in
+    map fst (dict_sort compare_imin (l1' @ l2'))
+  end
+
+(* ------------------------------------------------------------------------
+   Efficient algorithm for finding the k largest values in a list.
+   ------------------------------------------------------------------------ *)
+
+fun swap_value (arr,a,b) =
+  let
+    val av = Array.sub (arr,a)
+    val bv = Array.sub (arr,b)
+  in
+    Array.update (arr,a,bv);
+    Array.update (arr,b,av)
+  end
+
+fun heapify cmp arr n i =
+  let
+    val largest = ref i
+    val left = 2 * i + 1
+    val right = 2 * i + 2
+  in
+    if left < n andalso
+       cmp (Array.sub (arr,left),Array.sub (arr,!largest)) = LESS
+    then largest := left
+    else ();
+    if right < n andalso
+       cmp (Array.sub (arr,right),Array.sub (arr,!largest)) = LESS
+    then largest := right
+    else ();
+    if !largest <> i
+    then (swap_value (arr,i,!largest); heapify cmp arr n (!largest))
+    else ()
+  end
+
+fun build_maxheap cmp arr =
+  let
+    val n = Array.length arr
+    val i = n div 2 - 1
+  in
+    ignore (List.tabulate (i + 1, fn x => heapify cmp arr n (i - x)))
+  end
+
+fun delete_root cmp n arr =
+  let
+    val lastElement = Array.sub (arr,n-1)
+  in
+    Array.update (arr,0,lastElement);
+    heapify cmp arr (n-1) 0
+  end
+
+fun best_n cmp k l =
+  let
+    val arr = Array.fromList l
+    val n = Array.length arr
+    val k' = Int.min (k,n)
+    val _ = build_maxheap cmp arr
+    fun f i =
+      let val r = Array.sub (arr,0) in delete_root cmp (n-i) arr; r end
+  in
+    List.tabulate (k',f)
+  end
+
+fun best_n_rmaxu cmp k l =
+  let
+    val arr = Array.fromList l
+    val n = Array.length arr
+    val _ = build_maxheap compare_rmax arr
+    fun loop i (d,l) =
+      if dlength d >= k orelse n-i <= 0 then rev l else
+      let val r = fst (Array.sub (arr,0)) in
+        delete_root compare_rmax (n-i) arr;
+        loop (i+1) (if dmem r d then (d,l) else (dadd r () d, r :: l))
+      end
+  in
+    loop 0 (dempty cmp, [])
+  end
 
 (* ------------------------------------------------------------------------
    The functions from this section affects other in subtle ways.
@@ -457,13 +541,13 @@ fun strip_lisp x = case x of
   | Lstring x              => (lisp_lower_case x ,[])
   | _                      => raise ERR "strip_lisp" "operator is a comb"
 
-fun rec_fun_type n ty =
-  if n <= 1 then ty else mk_type ("fun",[ty,rec_fun_type (n-1) ty])
+fun rpt_fun_type n ty =
+  if n <= 1 then ty else mk_type ("fun",[ty,rpt_fun_type (n-1) ty])
 
 fun term_of_lisp x =
   let
     val (oper,argl) = strip_lisp x
-    val opertm = mk_var (oper, rec_fun_type (length argl + 1) alpha)
+    val opertm = mk_var (oper, rpt_fun_type (length argl + 1) alpha)
   in
     list_mk_comb (opertm, map term_of_lisp argl)
   end
@@ -551,6 +635,9 @@ fun percent x = approx 2 (100.0 * x)
 fun rts r = Real.toString r
 fun rts_round n r = rts (approx n r)
 fun pretty_real r = pad 8 "0" (rts_round 6 r)
+
+fun interval (step:real) (a,b) =
+  if a + (step / 2.0) > b then [b] else a :: interval step (a + step,b)
 
 (* ------------------------------------------------------------------------
    Terms
@@ -642,7 +729,6 @@ fun string_of_goal_noquote (asm,w) =
     s1
   end
 
-
 fun trace_tacl tacl g = case tacl of
     tac :: m =>
     (print_endline (string_of_goal g); trace_tacl m (hd (fst (tac g))))
@@ -666,6 +752,72 @@ fun strip_binop binop tm = case strip_comb tm of
     then a :: strip_binop binop b
     else [tm]
   | _ => [tm]
+
+(* ------------------------------------------------------------------------
+   S-expressions
+   ------------------------------------------------------------------------ *)
+
+local open HOLsexp SharingTables in
+
+(* basic encoding *)
+
+val enc_real = String o Real.toString
+val dec_real = Option.mapPartial Real.fromString o string_decode
+
+(* data with terms *)
+fun sharing_terms tml =
+  let
+    val ed = {named_terms = [], unnamed_terms = [], named_types = [],
+              unnamed_types = [], theorems = []}
+    val sdi1 = build_sharing_data ed
+    val sdi2 = add_terms tml sdi1
+    fun f sdi t = write_term sdi t handle NotFound =>
+      (print_endline ("write_term: " ^ term_to_string t);
+       raise ERR "write_term" (term_to_string t))
+  in
+    (String o f sdi2, sdi2)
+  end
+
+fun enc_tmdata (encf,tmlf) tmdata =
+  let val (enc_tm,sdi) = sharing_terms (tmlf tmdata) in
+    pair_encode (enc_sdata, encf enc_tm) (sdi,tmdata)
+  end
+
+fun dec_tmdata decf t =
+  let
+    val a = {with_strings = fn _ => (), with_stridty = fn _ => ()}
+    val (sdo, tmdata) =
+      valOf (pair_decode (dec_sdata a, SOME) t)
+    val dec_tm = Option.map (read_term sdo) o string_decode
+  in
+    decf dec_tm tmdata
+  end
+
+fun write_tmdata (encf,tmlf) file tmdata =
+  let
+    val ostrm = Portable.open_out file
+    val sexp = enc_tmdata (encf,tmlf) tmdata
+  in
+    PP.prettyPrint (curry TextIO.output ostrm, 75) (HOLsexp.printer sexp);
+    TextIO.closeOut ostrm
+  end
+
+fun read_tmdata decf file =
+  valOf (dec_tmdata decf (HOLsexp.fromFile file))
+
+(* data without terms *)
+fun write_data encf file tmdata =
+  let
+    val ostrm = Portable.open_out file
+    val sexp = encf tmdata
+  in
+    PP.prettyPrint (curry TextIO.output ostrm, 75) (HOLsexp.printer sexp);
+    TextIO.closeOut ostrm
+  end
+
+fun read_data decf file = valOf (decf (HOLsexp.fromFile file))
+
+end (* local *)
 
 (* ------------------------------------------------------------------------
    I/O
@@ -726,6 +878,7 @@ fun readl path =
     (TextIO.closeIn file; l3)
   end
 
+
 fun readl_empty path =
   let
     val file = TextIO.openIn path
@@ -738,7 +891,6 @@ fun readl_empty path =
   in
     (TextIO.closeIn file; l2)
   end
-
 
 fun write_file file s =
   let val oc = TextIO.openOut file in
@@ -787,11 +939,8 @@ fun append_file file s =
 fun append_endline file s = append_file file (s ^ "\n")
 
 val debug_flag = ref false
-fun debug_in_dir dir file s =
-  if !debug_flag
-  then (mkDir_err dir;
-        append_endline (dir ^ "/" ^ current_theory () ^ "___" ^ file) s)
-  else ()
+fun debug s = if !debug_flag then print_endline s else ()
+fun debugf s f x = if !debug_flag then print_endline (s ^ (f x)) else ()
 
 fun write_texgraph file (s1,s2) l =
   writel file ((s1 ^ " " ^ s2) :: map (fn (a,b) => its a ^ " " ^ its b) l);
@@ -802,6 +951,17 @@ fun writel_atomic file sl =
 
 fun readl_rm file =
   let val sl = readl file in OS.FileSys.remove file; sl end
+
+fun listDir dirName =
+  let
+    val dir = OS.FileSys.openDir dirName
+    fun read files = case OS.FileSys.readDir dir of
+        NONE => rev files
+      | SOME file => read (file :: files)
+    val r = read []
+  in
+    OS.FileSys.closeDir dir; r
+  end
 
 (* ------------------------------------------------------------------------
    Profiling
@@ -853,6 +1013,9 @@ fun split_sl_aux s pl sl = case sl of
               else split_sl_aux s (a :: pl) m
 
 fun split_sl s sl = split_sl_aux s [] sl
+
+fun subst_sl (s1,s2) sl =
+  let fun f x = if x = s1 then s2 else x in map f sl end
 
 fun rpt_split_sl s sl =
   let val (a,b) = split_sl s sl handle _ => (sl,[])
@@ -1043,9 +1206,9 @@ fun normalize_distrib dis =
     else map_snd (fn x => x / sum) dis
   end
 
-(* -------------------------------------------------------------------------
+(* ------------------------------------------------------------------------
    Parallelism (currently slowing functions inside threads)
-   ------------------------------------------------------------------------- *)
+   ------------------------------------------------------------------------ *)
 
 (* small overhead due to waiting safely for the thread to close *)
 fun interruptkill worker =
@@ -1061,23 +1224,42 @@ fun interruptkill worker =
        loop 10
      end
 
-(* -------------------------------------------------------------------------
-   Neural network units
-   ------------------------------------------------------------------------- *)
+(* ------------------------------------------------------------------------
+   Theories of the standard library (sigobj)
+   ------------------------------------------------------------------------ *)
 
-val oper_compare = cpl_compare Term.compare Int.compare
-
-fun all_fosubtm tm =
-  let val (oper,argl) = strip_comb tm in
-    tm :: List.concat (map all_fosubtm argl)
-  end
-
-fun operl_of tm =
+fun sigobj_theories () =
   let
-    val tml = mk_fast_set Term.compare (all_fosubtm tm)
-    fun f x = let val (oper,argl) = strip_comb x in (oper, length argl) end
+    val ttt_code_dir = HOLDIR ^ "/src/tactictoe/code"
+    val _    = mkDir_err ttt_code_dir
+    val file = ttt_code_dir ^ "/theory_list"
+    val sigdir = HOLDIR ^ "/sigobj"
+    val cmd0 = "cd " ^ sigdir
+    val cmd1 = "readlink -f $(find -regex \".*[^/]Theory.sig\") > " ^ file
   in
-    mk_fast_set oper_compare (map f tml)
+    ignore (OS.Process.system (cmd0 ^ "; " ^ cmd1 ^ "; "));
+    readl file
   end
+
+fun load_sigobj () =
+  let
+    fun barefile file = OS.Path.base (OS.Path.file file)
+    val l0 = sigobj_theories ()
+    val l1 = map barefile l0
+  in
+    app load l1
+  end
+
+fun link_sigobj file =
+  let
+    val base = OS.Path.base file
+    val link = HOLDIR ^ "/sigobj/" ^ OS.Path.base (OS.Path.file file)
+    fun f ext = "ln -sf " ^ base ^ "." ^ ext ^ " " ^ link ^ "." ^ ext ^ ";"
+    val l = map f ["sig","uo","ui"]
+    val cmd = String.concatWith " " l
+  in
+    ignore (OS.Process.system cmd)
+  end
+
 
 end (* struct *)

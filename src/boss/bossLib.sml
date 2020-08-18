@@ -78,6 +78,7 @@ val augment_srw_ss  = BasicProvers.augment_srw_ss
 val diminish_srw_ss = BasicProvers.diminish_srw_ss
 val export_rewrites = BasicProvers.export_rewrites
 val delsimps        = BasicProvers.delsimps
+val temp_delsimps   = BasicProvers.temp_delsimps
 
 val EVAL           = computeLib.EVAL_CONV;
 val EVAL_RULE      = computeLib.EVAL_RULE
@@ -154,6 +155,8 @@ val AllCaseEqs        = TypeBase.AllCaseEqs
 
 val completeInduct_on = numLib.completeInduct_on
 val measureInduct_on  = numLib.measureInduct_on;
+val op using          = markerLib.using
+val usingA            = markerLib.usingA
 
 val SPOSE_NOT_THEN    = BasicProvers.SPOSE_NOT_THEN
 val spose_not_then    = BasicProvers.SPOSE_NOT_THEN
@@ -203,7 +206,13 @@ val rw = srw_tac let_arith_list
 val fs = fsrw_tac let_arith_list
 val rfs = rfsrw_tac let_arith_list
 
-(* Witout loss of generality tactics *)
+fun cfg ev s = global_simp_tac {elimvars = ev, strip = s, droptrues = true}
+val gns = stateful (cfg false false) let_arith_list
+val gs = stateful (cfg false true) let_arith_list
+val gnvs = stateful (cfg true false) let_arith_list
+val gvs = stateful (cfg true true) let_arith_list
+
+(* Without loss of generality tactics *)
 val wlog_tac = wlog_tac
 val wlog_then = wlog_then
 

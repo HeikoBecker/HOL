@@ -120,7 +120,7 @@ sig
   val empty_ss        : simpset
   val ssfrags_of      : simpset -> ssfrag list
   val mk_simpset      : ssfrag list -> simpset
-  val remove_ssfrags  : simpset -> string list -> simpset
+  val remove_ssfrags  : string list -> simpset -> simpset
   val ssfrag_names_of : simpset -> string list
   val ++              : simpset * ssfrag -> simpset  (* infix *)
   val -*              : simpset * string list -> simpset (* infix *)
@@ -186,6 +186,14 @@ sig
    val rev_full_simp_tac          : simpset -> thm list -> tactic
    val NO_STRIP_FULL_SIMP_TAC     : simpset -> thm list -> tactic
    val NO_STRIP_REV_FULL_SIMP_TAC : simpset -> thm list -> tactic
+
+   type simptac_config = {strip : bool, elimvars : bool, droptrues : bool}
+   val psr : simptac_config -> simpset -> tactic
+     (* Pop, Simp, Rotate to back *)
+   val allasms : simptac_config -> simpset -> tactic
+     (* do the above to all the assumptions in turn *)
+   val global_simp_tac : simptac_config -> simpset -> thm list -> tactic
+     (* do allasms until quiescence, then simp in the goal as well *)
 
    (* ---------------------------------------------------------------------
     * SIMP_RULE : simpset -> tactic
